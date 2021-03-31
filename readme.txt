@@ -1,9 +1,9 @@
-Minimize Thunderbird to tray helper 0.1
+Minimize Thunderbird to tray helper 0.2
 
 1. Why?
   - 88.0b1 crashes when restoring from tray and using "System Integration" -> "When Thunderbird is minimized, move it to the tray".
   - In 88.0b1, the new message icon is not cleared if old messages are marked as unread.
-  - Thunderbird hides the tray icon when restoring
+  - Thunderbird hides the tray icon when restoring.
 
 2. How to use
   - Disable "System Integration" -> "When Thunderbird is minimized, move it to the tray"
@@ -13,6 +13,5 @@ Minimize Thunderbird to tray helper 0.1
 
 3. TODO:
   - Use SetWindowsHookEx
-  - Check new message popup using dwStyle = 94000000
-  - Bring Thunderbird to the front when clicking on the tray icon if Thunderbird is visible
+  - Check the new message popup using dwStyle = 94000000
   - Settings

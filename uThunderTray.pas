@@ -106,7 +106,7 @@ var
 begin
   style := GetWindowLong(wHandle, GWL_EXSTYLE);
   SetWindowLong(wHandle, GWL_EXSTYLE, style and (not WS_EX_TOOLWINDOW));
-  Sleep(500);
+  //Sleep(500);
   PostMessage(wHandle, WM_SYSCOMMAND, SC_RESTORE, 0);
 end;
 
@@ -242,7 +242,7 @@ procedure TfrmMain.TrayIconClick(Sender: TObject);
 begin
   if not IsIconic(WinHandle) then
   begin
-    BringWindowToTop(WinHandle);
+    SetForegroundWindow(WinHandle);
     Exit;
   end;
 
