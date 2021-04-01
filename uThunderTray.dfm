@@ -15,15 +15,9 @@ object frmMain: TfrmMain
   Font.Style = []
   OldCreateOrder = False
   Position = poScreenCenter
+  OnCreate = FormCreate
   PixelsPerInch = 96
   TextHeight = 13
-  object lbLoading: TLabel
-    Left = 26
-    Top = 13
-    Width = 49
-    Height = 13
-    Caption = 'Loading...'
-  end
   object Timer: TTimer
     Interval = 100
     OnTimer = RunTimer

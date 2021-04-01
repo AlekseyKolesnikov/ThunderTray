@@ -10,12 +10,12 @@ type
   TfrmMain = class(TForm)
     Timer: TTimer;
     TrayIcon: TTrayIcon;
-    lbLoading: TLabel;
     ImageList: TImageList;
     procedure HideTimer(Sender: TObject);
     procedure MonitorTimer(Sender: TObject);
     procedure RunTimer(Sender: TObject);
     procedure TrayIconClick(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
   private
     { Private declarations }
     procedure RunApp;
@@ -33,8 +33,7 @@ implementation
 {$R *.dfm}
 
 var
-  AppHandle: Cardinal;
-  WinHandle: HWND;
+  AppThread, AppHandle, WinHandle: Cardinal;
   {$IFDEF DEBUG}
   slDebug: TStringList;
   {$ENDIF}
@@ -88,11 +87,12 @@ begin
     until (cWaitIdle <> WAIT_TIMEOUT);
 
     Result := dwProcessId;
+    AppThread := dwThreadId;
     CloseHandle(hProcess);
   end;
 end;
 
-procedure HideApp(wHandle: HWND);
+procedure HideApp(wHandle: Cardinal);
 var
   style: Integer;
 begin
@@ -100,7 +100,7 @@ begin
   SetWindowLong(wHandle, GWL_EXSTYLE, style or WS_EX_TOOLWINDOW);
 end;
 
-procedure ShowApp(wHandle: HWND);
+procedure ShowApp(wHandle: Cardinal);
 var
   style: Integer;
 begin
@@ -110,10 +110,11 @@ begin
   PostMessage(wHandle, WM_SYSCOMMAND, SC_RESTORE, 0);
 end;
 
-function FindPopupNotificationProc(wHandle: HWND; AppHWND: Cardinal): BOOL; stdcall;
+function FindPopupNotificationProc(wHandle: Cardinal; AppHWND: Cardinal): BOOL; stdcall;
 var
   Title{, ClassName}: array[0..255] of char;
   ProcID: Cardinal;
+  pwi: TWindowInfo;
 begin
   Result := True;
 
@@ -129,13 +130,17 @@ begin
 
     if (Trim(string(Title)) = '') then
     begin
-      frmMain.TrayIcon.IconIndex := 1;
-      Result := False;
+      GetWindowInfo(wHandle, pwi);
+      if pwi.dwStyle and $FF000000 = $94000000 then
+      begin
+        frmMain.TrayIcon.IconIndex := 1;
+        Result := False;
+      end;
     end;
   end;
 end;
 
-function FindWindowHandleProc(wHandle: HWND; AppHWND: Cardinal): BOOL; stdcall;
+function FindWindowHandleProc(wHandle: Cardinal; AppHWND: Cardinal): BOOL; stdcall;
 var
   ProcID: Cardinal;
 begin
@@ -154,6 +159,11 @@ begin
   inherited;
   Params.ExStyle := Params.ExStyle and not WS_EX_APPWINDOW;
   Params.WndParent := Application.Handle;
+end;
+
+procedure TfrmMain.FormCreate(Sender: TObject);
+begin
+  Screen.Cursor := crAppStart;
 end;
 
 procedure TfrmMain.HideTimer(Sender: TObject);
@@ -189,7 +199,7 @@ begin
     slDebug.LoadFromFile('D:\log.log');
   {$ENDIF}
 
-  EnumWindows(@FindPopupNotificationProc, AppHandle);
+  EnumThreadWindows(AppThread, @FindPopupNotificationProc, AppHandle);
   if TrayIcon.IconIndex = 1 then Timer.Enabled := False;
 
   {$IFDEF DEBUG}
@@ -233,6 +243,7 @@ begin
   end;
 
   Self.Hide;
+  Screen.Cursor := crDefault;
 
   Timer.OnTimer := HideTimer;
   Timer.Enabled := True;
