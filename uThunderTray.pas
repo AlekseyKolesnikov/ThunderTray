@@ -3,8 +3,7 @@ unit uThunderTray;
 interface
 
 uses
-  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
-  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, Vcl.ExtCtrls, System.ImageList, Vcl.ImgList;
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Classes, Vcl.Controls, Vcl.Forms, Vcl.ExtCtrls, System.ImageList, Vcl.ImgList;
 
 type
   TfrmMain = class(TForm)
@@ -13,9 +12,9 @@ type
     ImageList: TImageList;
     procedure HideTimer(Sender: TObject);
     procedure MonitorTimer(Sender: TObject);
-    procedure RunTimer(Sender: TObject);
     procedure TrayIconClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
   private
     { Private declarations }
     procedure RunApp;
@@ -33,7 +32,7 @@ implementation
 {$R *.dfm}
 
 var
-  AppThread, AppHandle, WinHandle: Cardinal;
+  AppThread, WinHandle: Cardinal;
   {$IFDEF DEBUG}
   slDebug: TStringList;
   {$ENDIF}
@@ -86,8 +85,7 @@ begin
       cWaitIdle := WaitForInputIdle(hProcess, 50);
     until (cWaitIdle <> WAIT_TIMEOUT);
 
-    Result := dwProcessId;
-    AppThread := dwThreadId;
+    Result := dwThreadId;
     CloseHandle(hProcess);
   end;
 end;
@@ -110,45 +108,54 @@ begin
   PostMessage(wHandle, WM_SYSCOMMAND, SC_RESTORE, 0);
 end;
 
-function FindPopupNotificationProc(wHandle: Cardinal; AppHWND: Cardinal): BOOL; stdcall;
+function FindPopupNotificationProc(wHandle: Cardinal; _: Cardinal): BOOL; stdcall;
 var
-  Title{, ClassName}: array[0..255] of char;
-  ProcID: Cardinal;
+  Title: array[0..255] of char;
   pwi: TWindowInfo;
 begin
   Result := True;
 
-  GetWindowThreadProcessId(wHandle, ProcID);
-  if (ProcID = AppHWND) and (wHandle <> WinHandle) and IsWindowVisible(wHandle) then
+  if (wHandle <> WinHandle) and IsWindowVisible(wHandle) then
   begin
     GetWindowText(wHandle, Title, 255);
-    {$IFDEF DEBUG}
-    slDebug.Add(IntToStr(wHandle) + ' ' + string(Title));
-    {$ENDIF}
 
-    //GetClassName(wHandle, ClassName, 255);
+    {$IFDEF DEBUG}
+    slDebug.Add('[' + IntToStr(AppThread) + '] ' + IntToStr(wHandle) + ' "' + string(Title) + '"');
+    {$ENDIF}
 
     if (Trim(string(Title)) = '') then
     begin
       GetWindowInfo(wHandle, pwi);
-      if pwi.dwStyle and $FF000000 = $94000000 then
+
+      {$IFDEF DEBUG}
+      slDebug.Add(IntToStr(pwi.dwStyle) + ' ' + IntToStr(pwi.dwExStyle) + ' ' + IntToStr(pwi.atomWindowType));
+      {$ENDIF}
+
+      if (pwi.dwStyle and $FF000000 = $94000000) and (pwi.dwExStyle = $00080888) then
       begin
         frmMain.TrayIcon.IconIndex := 1;
         Result := False;
       end;
     end;
   end;
+  {$IFDEF DEBUG}
+  try
+    slDebug.SaveToFile('D:\log.log');
+  except
+  end;
+  {$ENDIF}
 end;
 
-function FindWindowHandleProc(wHandle: Cardinal; AppHWND: Cardinal): BOOL; stdcall;
-var
-  ProcID: Cardinal;
+function FindWindowHandleProc(wHandle: Cardinal; _: Cardinal): BOOL; stdcall;
 begin
   if IsWindowVisible(wHandle) then
   begin
-    GetWindowThreadProcessId(wHandle, ProcID);
-    if (ProcID = AppHWND) then
-      WinHandle := wHandle;
+    {$IFDEF DEBUG}
+    slDebug.Add('[' + IntToStr(AppThread) + '] ' + IntToStr(wHandle));
+    slDebug.SaveToFile('D:\log.log');
+    {$ENDIF}
+
+    WinHandle := wHandle;
   end;
 
   Result := WinHandle = 0;
@@ -164,6 +171,32 @@ end;
 procedure TfrmMain.FormCreate(Sender: TObject);
 begin
   Screen.Cursor := crAppStart;
+  {$IFDEF DEBUG}
+  slDebug := TStringList.Create;
+  {$ENDIF}
+
+  WinHandle := 0;
+
+  RunApp;
+
+  if WinHandle = 0 then
+  begin
+    Application.Terminate;
+    Exit;
+  end;
+
+  Self.Hide;
+  Screen.Cursor := crDefault;
+
+  Timer.OnTimer := HideTimer;
+  Timer.Enabled := True;
+end;
+
+procedure TfrmMain.FormDestroy(Sender: TObject);
+begin
+  {$IFDEF DEBUG}
+  slDebug.Free;
+  {$ENDIF}
 end;
 
 procedure TfrmMain.HideTimer(Sender: TObject);
@@ -193,19 +226,8 @@ begin
     Application.Terminate;
   end;
 
-  {$IFDEF DEBUG}
-  slDebug := TStringList.Create;
-  if FileExists('D:\log.log') then
-    slDebug.LoadFromFile('D:\log.log');
-  {$ENDIF}
-
-  EnumThreadWindows(AppThread, @FindPopupNotificationProc, AppHandle);
+  EnumThreadWindows(AppThread, @FindPopupNotificationProc, 0);
   if TrayIcon.IconIndex = 1 then Timer.Enabled := False;
-
-  {$IFDEF DEBUG}
-  slDebug.SaveToFile('D:\log.log');
-  slDebug.Free;
-  {$ENDIF}
 end;
 
 procedure TfrmMain.RunApp;
@@ -215,38 +237,22 @@ var
   i: Integer;
 begin
   Path := ExtractFilePath(Application.ExeName) + 'thunderbird.exe';
+
   if not FileExists(Path) then
     Path := 'C:\Program Files\Mozilla Thunderbird\thunderbird.exe';
 
-  AppHandle := InstExec(Path, '', '', SW_NORMAL, ErrorCode);
+  if not FileExists(Path) then
+    Exit;
+
+  AppThread := InstExec(Path, '', '', SW_NORMAL, ErrorCode);
 
   for i := 0 to 20 do
   begin
     Sleep(500);
-    EnumWindows(@FindWindowHandleProc, AppHandle);
+    EnumThreadWindows(AppThread, @FindWindowHandleProc, 0);
     if WinHandle > 0 then
       Break;
   end;
-end;
-
-procedure TfrmMain.RunTimer(Sender: TObject);
-begin
-  WinHandle := 0;
-  Timer.Enabled := False;
-
-  RunApp;
-
-  if WinHandle = 0 then
-  begin
-    Application.Terminate;
-    Exit;
-  end;
-
-  Self.Hide;
-  Screen.Cursor := crDefault;
-
-  Timer.OnTimer := HideTimer;
-  Timer.Enabled := True;
 end;
 
 procedure TfrmMain.TrayIconClick(Sender: TObject);

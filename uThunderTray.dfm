@@ -16,11 +16,12 @@ object frmMain: TfrmMain
   OldCreateOrder = False
   Position = poScreenCenter
   OnCreate = FormCreate
+  OnDestroy = FormDestroy
   PixelsPerInch = 96
   TextHeight = 13
   object Timer: TTimer
-    Interval = 100
-    OnTimer = RunTimer
+    Enabled = False
+    Interval = 500
     Top = 28
   end
   object TrayIcon: TTrayIcon
