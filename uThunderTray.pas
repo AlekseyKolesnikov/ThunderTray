@@ -147,15 +147,20 @@ begin
 end;
 
 function FindWindowHandleProc(wHandle: Cardinal; _: Cardinal): BOOL; stdcall;
+var
+  Title: array[0..255] of char;
 begin
   if IsWindowVisible(wHandle) then
   begin
+    GetWindowText(wHandle, Title, 255);
+
     {$IFDEF DEBUG}
-    slDebug.Add('[' + IntToStr(AppThread) + '] ' + IntToStr(wHandle));
+    slDebug.Add('[' + IntToStr(AppThread) + '] ' + IntToStr(wHandle) + ' "' + string(Title) + '"');
     slDebug.SaveToFile('D:\log.log');
     {$ENDIF}
 
-    WinHandle := wHandle;
+    if Pos('Mozilla Thunderbird', string(Title)) > 0 then
+      WinHandle := wHandle;
   end;
 
   Result := WinHandle = 0;

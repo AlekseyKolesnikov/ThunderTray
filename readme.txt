@@ -1,4 +1,4 @@
-Minimize Thunderbird to tray helper 0.4
+Minimize Thunderbird to tray helper 0.5
 
 1. Why?
   - 88.0b1 crashes when restoring from tray and using "System Integration" -> "When Thunderbird is minimized, move it to the tray".
