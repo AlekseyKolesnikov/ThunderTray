@@ -26,6 +26,7 @@ type
     { Private declarations }
     procedure InitSettings;
     procedure RunApp;
+    procedure ShowApplication;
   protected
     procedure CreateParams(var Params: TCreateParams); override;
   public
@@ -49,14 +50,12 @@ var
   AppThread, WinHandle: Cardinal;
   Settings: record
     Safe, UsePopupMonitor, PopupStyleCheck, PopupExStyleCheck, PopupTitleEqual, MainTitleEqual, UpdateTitle: Boolean;
-    RunApp, Params, Folder, PopupTitle, MainTitle, IconTitle, IconMain, IconPopup: String;
+    RunApp, Params, Folder, PopupTitle, MainTitle, IconTitle, IconMain, IconPopup, Debug: String;
     StartTimeout, HideMonitorTimer, PopupMonitorTimer: Integer;
     PopupStyleMask, PopupStyleValue, PopupExStyleMask, PopupExStyleValue: Cardinal
   end;
-  PopupDetected: Boolean;
-  {$IFDEF DEBUG}
+  PopupDetected, MainDetected: Boolean;
   slDebug: TStringList;
-  {$ENDIF}
 
 function AddPath(const S: string): string;
 begin
@@ -119,6 +118,8 @@ procedure InitDefaultSettings;
 begin
   with Settings do
   begin
+    Debug := '';
+
     StartTimeout := 10;
     HideMonitorTimer := 500;
     PopupMonitorTimer := 2000;
@@ -208,6 +209,7 @@ begin
     Params := Trim(ini.ReadString('Run', 'Params', Params));
     Folder := Trim(ini.ReadString('Run', 'Folder', Folder));
     Safe := ReadBool('Run', 'Safe', Safe);
+    Debug := Trim(ini.ReadString('Run', 'Debug', Debug));
 
     StartTimeout := ini.ReadInteger('Timers', 'StartTimeout', StartTimeout);
     HideMonitorTimer := ini.ReadInteger('Timers', 'HideMonitorTimer', HideMonitorTimer);
@@ -237,7 +239,6 @@ begin
   ini.Free;
 end;
 
-{$IFDEF DEBUG}
 procedure LogSettings;
 begin
   slDebug.Add('RunApp ' + Settings.RunApp);
@@ -267,8 +268,9 @@ begin
   slDebug.Add('PopupExStyleCheck ' + BoolToStr(Settings.PopupExStyleCheck, True));
   slDebug.Add('PopupExStyleMask ' + IntToHex(Settings.PopupExStyleMask));
   slDebug.Add('PopupExStyleValue ' + IntToHex(Settings.PopupExStyleValue));
+
+  slDebug.SaveToFile(Settings.Debug);
 end;
-{$ENDIF}
 
 procedure ShowApp(wHandle: Cardinal);
 var
@@ -292,52 +294,69 @@ var
 begin
   Result := True;
 
+  if (wHandle = WinHandle) and IsWindowVisible(wHandle) and (not IsIconic(WinHandle)) then
+  begin
+    MainDetected := True;
+
+    if Settings.Debug <> '' then
+    begin
+      GetWindowText(wHandle, Title, 255);
+      GetWindowInfo(wHandle, pwi);
+
+      slDebug.Add('[' + IntToHex(AppThread) + '/' + IntToHex(wHandle) + ']  style: ' + IntToHex(pwi.dwStyle) +
+        '  exStyle: ' + IntToHex(pwi.dwExStyle) + '  "' + string(Title) + '"  MAIN');
+      slDebug.SaveToFile(Settings.Debug);
+    end;
+
+    Exit;
+  end;
+
   if (wHandle <> WinHandle) and IsWindowVisible(wHandle) then
   begin
     GetWindowText(wHandle, Title, 255);
 
-    {$IFDEF DEBUG}
-    slDebug.Add('[' + IntToStr(AppThread) + '] ' + IntToStr(wHandle) + ' "' + string(Title) + '"');
-    {$ENDIF}
+    if Settings.Debug <> '' then
+    try
+      GetWindowInfo(wHandle, pwi);
+      slDebug.Add('[' + IntToHex(AppThread) + '/' + IntToHex(wHandle) + ']  style: ' + IntToHex(pwi.dwStyle) +
+        '  exStyle: ' + IntToHex(pwi.dwExStyle) + '  "' + string(Title) + '"');
+      slDebug.SaveToFile(Settings.Debug);
+    except
+    end;
 
     if Settings.PopupTitleEqual and (Trim(string(Title)) = Settings.PopupTitle) or
       (not Settings.PopupTitleEqual) and ((Settings.PopupTitle = '') or (Pos(Settings.PopupTitle, Trim(string(Title))) > 0)) then
     begin
-      GetWindowInfo(wHandle, pwi);
-
-      {$IFDEF DEBUG}
-      slDebug.Add(IntToStr(pwi.dwStyle) + ' ' + IntToStr(pwi.dwExStyle) + ' ' + IntToStr(pwi.atomWindowType));
-      {$ENDIF}
+      if Settings.Debug = '' then
+        GetWindowInfo(wHandle, pwi);
 
       if ((not Settings.PopupStyleCheck) or (pwi.dwStyle and Settings.PopupStyleMask = Settings.PopupStyleValue)) and
         ((not Settings.PopupExStyleCheck) or (pwi.dwExStyle and Settings.PopupExStyleMask = Settings.PopupExStyleValue)) then
       begin
         PopupDetected := True;
-        Result := False;
+        //Result := False; if we activate the main window from the popup, we need to enum all windows
       end;
     end;
   end;
-
-  {$IFDEF DEBUG}
-  try
-    slDebug.SaveToFile('D:\log.log');
-  except
-  end;
-  {$ENDIF}
 end;
 
 function FindWindowHandleProc(wHandle: Cardinal; _: Cardinal): BOOL; stdcall;
 var
   Title: array[0..255] of char;
+  pwi: TWindowInfo;
 begin
   if IsWindowVisible(wHandle) then
   begin
     GetWindowText(wHandle, Title, 255);
 
-    {$IFDEF DEBUG}
-    slDebug.Add('[' + IntToStr(AppThread) + '] ' + IntToStr(wHandle) + ' "' + string(Title) + '"');
-    slDebug.SaveToFile('D:\log.log');
-    {$ENDIF}
+    if Settings.Debug <> '' then
+    try
+      GetWindowInfo(wHandle, pwi);
+      slDebug.Add('[' + IntToHex(AppThread) + '/' + IntToHex(wHandle) + ']  style: ' + IntToHex(pwi.dwStyle) +
+        '  exStyle: ' + IntToHex(pwi.dwExStyle) + '  "' + string(Title) + '"  main');
+      slDebug.SaveToFile(Settings.Debug);
+    except
+    end;
 
     if Settings.MainTitleEqual and (Trim(string(Title)) = Settings.MainTitle) or
       (not Settings.MainTitleEqual) and ((Settings.MainTitle = '') or (Pos(Settings.MainTitle, Trim(string(Title))) > 0)) then
@@ -363,16 +382,12 @@ begin
   Screen.Cursor := crAppStart;
   WinHandle := 0;
 
-  {$IFDEF DEBUG}
   slDebug := TStringList.Create;
-  {$ENDIF}
 
   InitDefaultSettings;
   InitSettings;
 
-  {$IFDEF DEBUG}
-  LogSettings;
-  {$ENDIF}
+  if Settings.Debug <> '' then LogSettings;
 
   if Settings.RunApp = '' then
   begin
@@ -399,9 +414,7 @@ end;
 
 procedure TfrmMain.FormDestroy(Sender: TObject);
 begin
-  {$IFDEF DEBUG}
   slDebug.Free;
-  {$ENDIF}
 end;
 
 procedure TfrmMain.HideTimer(Sender: TObject);
@@ -534,13 +547,18 @@ begin
   end;
 
   PopupDetected := False;
+  MainDetected := False;
+
   EnumThreadWindows(AppThread, @FindPopupNotificationProc, 0);
 
   if PopupDetected then
   begin
-    Timer.Enabled := False;
+    //Timer.Enabled := False; if we activate the main window from the popup, we still need a timer
     TrayIcon.IconIndex := 1;
   end;
+
+  if MainDetected then
+    ShowApplication;
 end;
 
 procedure TfrmMain.RunApp;
@@ -568,14 +586,8 @@ begin
   end;
 end;
 
-procedure TfrmMain.TrayIconClick(Sender: TObject);
+procedure TfrmMain.ShowApplication;
 begin
-  if not IsIconic(WinHandle) then
-  begin
-    SetForegroundWindow(WinHandle);
-    Exit;
-  end;
-
   Timer.Enabled := False;
 
   ShowApp(WinHandle);
@@ -587,4 +599,16 @@ begin
   Timer.Enabled := True;
 end;
 
+procedure TfrmMain.TrayIconClick(Sender: TObject);
+begin
+  if not IsIconic(WinHandle) then
+  begin
+    SetForegroundWindow(WinHandle);
+    Exit;
+  end;
+
+  ShowApplication;
+end;
+
 end.
+

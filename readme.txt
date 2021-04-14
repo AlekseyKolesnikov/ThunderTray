@@ -1,4 +1,4 @@
-ThunderTray 1.0
+ThunderTray 1.0.1
 
 Minimize application to tray helper. Initially created for Thunderbird.
 
