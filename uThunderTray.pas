@@ -584,6 +584,11 @@ begin
     if WinHandle > 0 then
       Break;
   end;
+
+  SendToBack;
+
+  if WinHandle > 0 then
+    SetForegroundWindow(WinHandle);
 end;
 
 procedure TfrmMain.ShowApplication;
